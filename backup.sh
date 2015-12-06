@@ -155,7 +155,7 @@ function checkArchive () {
 
         if [ ! $mTime == $mLastTimeModified ]
         then
-            mArchiveName="backup_$mTime _$mHostname.tar.gz"
+            mArchiveName="backup_${mTime}_${mHostname}.tar.gz"
             mArchivePath="$mBackupPath/$mArchiveName"
         fi
     fi

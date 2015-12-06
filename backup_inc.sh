@@ -7,9 +7,9 @@ function parseArgs () {
     while [ $# -gt 0 ]
     do
         case $1 in
-            -o) directory=$2; shift 1;;
+            -o) outputDirectory=$2; shift 1;;
             -a) patchArchive=$2; shift 1;;
-	    -i) backignore=$2; shift 1;;
+	    -i) backIgnore=$2; shift 1;;
         esac
         shift 1
     done
@@ -28,10 +28,18 @@ local isArchiveValid=$( echo "$archiveName" | grep -x "backup_[0-9]*_[a-zA-Z]*.t
     then
         echo "Please enter a reference patch file."
         exit 0
-    elif [ -z $directory ]
+    elif [ -z $outputDirectory ]
     then
         echo "Please enter a directory to backup (or leave the field empty - using current directory as the output)."
         exit 0
+    elif [ -z $backIgnore ]
+    then
+    	echo "Please enter a backignore file."
+    	exit 0
+    elif [ ! -f $backIgnore ]
+    then
+    	echo "Backignore must be a file"
+    	exit 0
     elif [ ! -f $isArchiveValid ]
     then
         echo "Please enter a valid patchArchive file."
@@ -64,15 +72,25 @@ function checkTempDir () {
     fi
 }
 
+function createIgnoreFilter() {
+    for pattern in $( cat $backIgnore )
+    do
+        filter="$filter ! -name $pattern"
+    done
+}
+
 function handleArchiveExtracting() {
+		local backupDirectory="$outputDirectory/.backup"
 
-		local baseArchiveToExtract=$( chooseLatestArchive $backupDirectory )
-		checkTempDir "$outputDirectory/tmp"
+		checkTempDir "$backupDirectory/tmp"
+		checkTempDir "$backupDirectory/tmp2"
+		
+		chooseLatestArchive $backupDirectory
+		
+		tar -xf "$patchArchive" -C "$backupDirectory/tmp2"
 
-		tar -xf "$baseArchiveToExtract" -C "$backupDirectory/tmp" 
-
-		local patchFiles=$( find "$outputDirectory/tmp" -type f -name "*.patch" )
-		local binaryFiles=$( find "$outputDirectory/tmp" -type f ! -name "*.patch" )
+		local patchFiles=$( find "$backupDirectory/tmp2" -type f -name "*.patch" $filter)
+		local binaryFiles=$( find "$backupDirectory/tmp2" -type f ! -name "*.patch" $filter)
 		
 		for patch in $patchFiles
 		do
@@ -82,7 +100,7 @@ function handleArchiveExtracting() {
 				echo "cleanedName = $cleanedName"
 				echo "patch file = $patch"
 			fi
-			patch "$outputDirectory/tmp"/"${cleanedName}" "$patch"
+			patch "$backupDirectory/tmp/${cleanedName}" "$patch"
 		done 
 		
 		for binary in $binaryFiles
@@ -93,25 +111,31 @@ function handleArchiveExtracting() {
 				echo "cleanedName = $cleanedName"
 				echo "binary file = $binary"
 			fi
-			mv "$binary" "${outputDirectory}/tmp"/"${cleanedName}"
+			mv -f "$binary" "$backupDirectory/tmp/${cleanedName}"
 		done 	
 		
 		## TODO : save the archive
+		local oldTime=$(echo "$patchArchive" | cut -d _ -f 2)
+		local newTime=$(date +%s)
+		
+		tar -cf "$backupDirectory/inc_backup_${newTime}_${oldTime}.tgz" -C "$backupDirectory/tmp/" 
+
 
 		rm -rf $backupDirectory/tmp
+		rm -rf $backupDirectory/tmp2
 		exit 0
 }
 
 function chooseLatestArchive() {
-	local notInitialBackups=$( ls -Xr | grep -x "backup_[0-9]*_[a-zA-Z]*.tar.gz" )
+	local notInitialBackups=$( ls -Xr | grep -x "inc_backup_[0-9]*_[a-zA-Z]*.tar.gz" )
 	if [ ! -z $notInitialBackups ]			## THERE IS A MORE RECENT ONE (<=> INCREMENTAL BACKUP) AVAILABLE
 	then
 		local arr=($notInitialBackups)
 		local baseArchive=${arr[0]}
-		tar -xf "${*}/${baseArchive}" -C "$outputDirectory" ### RESTORE BACKUP_INIT
+		tar -xf "${*}/${baseArchive}" -C "$backupDirectory/tmp" ### RESTORE NOT BACKUP_INIT
 	elif [ -f "${*}"/backup_init.tar.gz ]
 	then
-		tar -xf "${*}/backup_init.tar.gz" -C "$outputDirectory" ### RESTORE BACKUP_INIT
+		tar -xf "${*}/backup_init.tar.gz" -C "$backupDirectory/tmp" ### RESTORE BACKUP_INIT
 	else
 		echo "Trying to extract a patch archive without any existing base archive. Aborting."
 		exit 0

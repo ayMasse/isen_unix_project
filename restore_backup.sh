@@ -79,7 +79,7 @@ function handleArchiveExtracting() {
 	then
 		deleteAllButBackupDir
 		
-		baseArchiveToExtract=$( chooseLatestArchive $backupDirectory )
+		chooseLatestArchive $backupDirectory
 		checkTempDir "$backupDirectory/tmp"
 		tar -xf $archivePath -C $backupDirectory/tmp		#### EXTRACT THE ARCHIVE INTO A TEMPORARY FOLDER
 
@@ -117,7 +117,7 @@ function handleArchiveExtracting() {
 }
 
 function chooseLatestArchive() {
-	local notInitialBackups=$( ls -Xr | grep -x "backup_[0-9]*_[a-zA-Z]*.tar.gz" )
+	local notInitialBackups=$( ls -Xr | grep -x "inc_backup_[0-9]*_[a-zA-Z]*.tgz" )
 	if [ ! -z $notInitialBackups ]			## THERE IS A MORE RECENT ONE (<=> INCREMENTAL BACKUP) AVAILABLE
 	then
 		local arr=($notInitialBackups)
