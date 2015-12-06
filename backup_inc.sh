@@ -75,7 +75,9 @@ function checkTempDir () {
 function createIgnoreFilter() {
     for pattern in $( cat $backIgnore )
     do
-        filter="$filter ! -name $pattern"
+    	echo $pattern
+        filter="$filter ! -name $pattern ! -name $pattern.patch"
+        echo $filter
     done
 }
 
@@ -90,6 +92,8 @@ function handleArchiveExtracting() {
 		tar -xf "$patchArchive" -C "$backupDirectory/tmp2"
 
 		createIgnoreFilter
+		
+		echo "filter: $filter"
 
 		local patchFiles=$( find "$backupDirectory/tmp2" -type f -name "*.patch" $filter)
 		local binaryFiles=$( find "$backupDirectory/tmp2" -type f ! -name "*.patch" $filter)
