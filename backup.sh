@@ -112,7 +112,8 @@ function backupText () {
         tar -f "$mBackupPath/$mInitialArchiveName" -x $mSimpleFileName
         diff $mSimpleFileName $1 > "$mSimpleFileName.patch"
         tar -uf $mArchivePath "$mSimpleFileName.patch"
-        #rm "$mSimpleFileName.patch"
+        rm "$mSimpleFileName"
+        rm "$mSimpleFileName.patch"
     else
         tar -uf "$mBackupPath/$mInitialArchiveName" -C $mDir $mSimpleFileName
 
@@ -120,7 +121,7 @@ function backupText () {
         then
             touch "$mSimpleFileName.patch"
             tar -uf $mArchivePath "$mSimpleFileName.patch"
-            #rm "$mSimpleFileName.patch"
+            rm "$mSimpleFileName.patch"
         fi
     fi
 }
