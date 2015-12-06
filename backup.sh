@@ -89,9 +89,9 @@ function backupFile () {
 
 # Check type of file and call apropriate function to archive it.
 function checkFileType () {
-    mFileType=$( file -i $1)
+    mFileType=$( file -bi $1)
 
-    if [[ $mFileType == "$1: text"* ]]
+    if [[ $mFileType == *"text"* ]]
     then
         backupText $1
     else
