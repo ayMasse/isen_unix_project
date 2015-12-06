@@ -89,6 +89,8 @@ function handleArchiveExtracting() {
 		
 		tar -xf "$patchArchive" -C "$backupDirectory/tmp2"
 
+		createIgnoreFilter
+
 		local patchFiles=$( find "$backupDirectory/tmp2" -type f -name "*.patch" $filter)
 		local binaryFiles=$( find "$backupDirectory/tmp2" -type f ! -name "*.patch" $filter)
 		
@@ -118,8 +120,18 @@ function handleArchiveExtracting() {
 		local oldTime=$(echo "$patchArchive" | cut -d _ -f 2)
 		local newTime=$(date +%s)
 		
-		tar -cf "$backupDirectory/inc_backup_${newTime}_${oldTime}.tgz" -C "$backupDirectory/tmp/" 
-
+		filesToBackup=$( ls "$backupDirectory/tmp/" )
+		
+		SAVEIFS=$IFS
+		IFS=$(echo -en "\n\b")
+		
+		for file in $filesToBackup
+		do
+			tar -uf "$backupDirectory/inc_backup_${newTime}_${oldTime}.tgz" -C "$backupDirectory/tmp/" "$file"
+		done
+		
+		# Set the IFS with its former value
+		IFS=$SAVEIFS
 
 		rm -rf $backupDirectory/tmp
 		rm -rf $backupDirectory/tmp2
