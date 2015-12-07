@@ -13,14 +13,14 @@ function parseArgs () {
         esac
         shift 1
     done
-    
+
     # Debug check of fields values
     if [ $DEBUG -eq 1 ]
     then
         echo "patchArchive = $patchArchive"
         echo "directory = $outputDirectory"
     fi
-    
+
 local isArchiveValid=$( echo "$archiveName" | grep -x "backup_[0-9]*_[a-zA-Z]*.tar.gz" )
 
     # Check if arguments are not missing
@@ -59,12 +59,12 @@ function checkTempDir () {
     if [ ! -e $* ]
     then
         mkdir "$*"
-        
+
         if [ $DEBUG -eq 1 ]
         then
             echo "Created directory $*"
         fi
-        
+
     elif [ ! -d $* ]
     then
         echo "A file named $* is preventing this program to create a needed directory with this name. Abort."
@@ -86,18 +86,18 @@ function handleArchiveExtracting() {
 
 		checkTempDir "$backupDirectory/tmp"
 		checkTempDir "$backupDirectory/tmp2"
-		
+
 		chooseLatestArchive $backupDirectory
-		
+
 		tar -xf "$patchArchive" -C "$backupDirectory/tmp2"
 
 		createIgnoreFilter
-		
+
 		echo "filter: $filter"
 
 		local patchFiles=$( find "$backupDirectory/tmp2" -type f -name "*.patch" $filter)
 		local binaryFiles=$( find "$backupDirectory/tmp2" -type f ! -name "*.patch" $filter)
-		
+
 		for patch in $patchFiles
 		do
 			local cleanedName=$( basename $patch .patch )
@@ -107,8 +107,8 @@ function handleArchiveExtracting() {
 				echo "patch file = $patch"
 			fi
 			patch "$backupDirectory/tmp/${cleanedName}" "$patch"
-		done 
-		
+		done
+
 		for binary in $binaryFiles
 		do
 			local cleanedName=$( basename $binary )
@@ -118,22 +118,22 @@ function handleArchiveExtracting() {
 				echo "binary file = $binary"
 			fi
 			mv -f "$binary" "$backupDirectory/tmp/${cleanedName}"
-		done 	
-		
+		done
+
 		## TODO : save the archive
 		local oldTime=$(echo "$patchArchive" | cut -d _ -f 2)
 		local newTime=$(date +%s)
-		
+
 		filesToBackup=$( ls "$backupDirectory/tmp/" )
-		
+
 		SAVEIFS=$IFS
 		IFS=$(echo -en "\n\b")
-		
+
 		for file in $filesToBackup
 		do
 			tar -uf "$backupDirectory/inc_backup_${newTime}_${oldTime}.tgz" -C "$backupDirectory/tmp/" "$file"
 		done
-		
+
 		# Set the IFS with its former value
 		IFS=$SAVEIFS
 

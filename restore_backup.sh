@@ -1,12 +1,12 @@
 #! /bin/bash
 
-#parsing arguments and storing their values in $mOutputDirectory and &mArchivePath
+# Parse arguments and stores their values
 function parseArgs () {
     # Loop to retrieve arguments
     while [ $# -gt 0 ]
     do
         case $1 in
-            -o) mOutputDirectory=$2; shift 1;;
+            -o) mOutputDir=$2; shift 1;;
             -a) mArchivePath=$2; shift 1;;
         esac
         shift 1
@@ -16,33 +16,30 @@ function parseArgs () {
     if [ $DEBUG -eq 1 ]
     then
         echo "mArchivePath = $mArchivePath"
-        echo "mOutputDirectory = $mOutputDirectory"
+        echo "mOutputDir = $mOutputDir"
     fi
 
     # Check if arguments are not missing
     if [ -z $mArchivePath ]
     then
-        echo "Please enter a mArchivePath file."
+        echo "Please enter a valid archive path."
         exit 0
-    elif [ -z $mOutputDirectory ]
+    elif [ -z $mOutputDir ]
     then
         echo "Please enter a directory to backup (or leave the field empty - using current directory as the output)."
         exit 0
     elif [ ! -f $mArchivePath ]
     then
-        echo "Please enter a valid mArchivePath file."
+        echo "Please enter a valid archive path."
         exit 0
-    elif [ ! -d $mOutputDirectory ]
+    elif [ ! -d $mOutputDir ]
     then
         echo "Backup directory must be a directory."
         exit 0
     fi
 }
 
-function deleteAllButBackupDir() {
-	find $mOutputDirectory -maxdepth 1 -type f -delete
-}
-
+# Checks if temporary directory exists. Creates it otherwise.
 function checkTempDir () {
     if [ ! -e $1 ]
     then
@@ -60,79 +57,82 @@ function checkTempDir () {
     fi
 }
 
-function handleArchiveExtracting() {
-	local backupDirectory=$( dirname $mArchivePath )		## FOLDER WHERE ALL THE BACKUP ARE ( <=> .backup FOLDER)
-	local archiveName=$( basename $mArchivePath )		## NAME OF THE ARCHIVE ITSELF (USED FOR REGEXP)
-
-	local baseArchive=$( echo "$archiveName" | grep -x "backup_init.tar.gz\|inc_backup_[0-9]*_[0-9]*.tgz" )
-	local patchArchive=$( echo "$archiveName" | grep -x "backup_[0-9]*_[a-zA-Z]*.tar.gz" )
-	echo "baseArchive = $baseArchive"
-	echo "backupDirectory = $backupDirectory"
-
-	if [ ! -z $baseArchive ]		## IS THE ARCHIVE A "BASIC" ONE (INITIAL BACKUP OR INCREMENTAL BACKUP ?)
-	then
-		deleteAllButBackupDir
-		tar -xf "$mArchivePath" -C "$mOutputDirectory"
-
-	elif [ ! -z $patchArchive ]		## IS THE ARCHIVE A PATCH ARCHIVE ?
-	then
-		deleteAllButBackupDir
-
-		chooseLatestArchive $backupDirectory
-		checkTempDir "$backupDirectory/tmp"
-		tar -xf $mArchivePath -C $backupDirectory/tmp		#### EXTRACT THE ARCHIVE INTO A TEMPORARY FOLDER
-
-		local patchFiles=$( find "$backupDirectory/tmp" -type f -name "*.patch" )
-		local binaryFiles=$( find "$backupDirectory/tmp" -type f ! -name "*.patch" )
-
-		for patch in $patchFiles
-		do
-			local cleanedName=$( basename $patch .patch )
-		        if [ $DEBUG -eq 1 ]
-		        then
-				echo "cleanedName = $cleanedName"
-				echo "patch file = $patch"
-			fi
-			patch "${mOutputDirectory}"/"${cleanedName}" "$patch"
-		done
-
-		for binary in $binaryFiles
-		do
-			local cleanedName=$( basename $binary )
-		        if [ $DEBUG -eq 1 ]
-		        then
-				echo "cleanedName = $cleanedName"
-				echo "binary file = $binary"
-			fi
-			mv "$binary" "${mOutputDirectory}"/"${cleanedName}"
-		done
-
-		rm -rf $backupDirectory/tmp
-
-	else		## OTHERWISE WE WON'T PROCESS IT
-		echo "Archive doesn't exist/ doesn't have a correct name. Aborting."
-		exit 0
-	fi
+# Handle archive extraction
+function restoreArchive () {
+    # Check if the target archive is the initial one.
+    if [[ $( basename $mArchivePath ) == $mInitialArchiveName ]]; then
+        tar -xf $mArchivePath -C $mOutputDir
+    else
+        restoreFragmentedArchive
+    fi
 }
 
-function chooseLatestArchive() {
-	local notInitialBackups=$( ls -Xr | grep -x "inc_backup_[0-9]*_[a-zA-Z]*.tgz" )
-	if [ ! -z $notInitialBackups ]			## THERE IS A MORE RECENT ONE (<=> INCREMENTAL BACKUP) AVAILABLE
-	then
-		local arr=($notInitialBackups)
-		local baseArchive=${arr[0]}
-		tar -xf "${*}/${baseArchive}" -C "$mOutputDirectory" ### RESTORE BACKUP_INIT
-	elif [ -f "${*}"/backup_init.tar.gz ]
-	then
-		tar -xf "${*}/backup_init.tar.gz" -C "$mOutputDirectory" ### RESTORE BACKUP_INIT
-	else
-		echo "Trying to extract a patch archive without any existing base archive. Aborting."
-		exit 0
-	fi
+# Handle fragmented archive extraction
+function restoreFragmentedArchive () {
+    checkTempDir $mTmpDir
+    mArchiveDir=$( dirname $mArchivePath )
+
+    restoreInitialArchive
+    restoreSelectedArchive
+
+    cp $mTmpDir/* $mOutputDir
+    rm -r $mTmpDir
 }
 
-################# MAIN
+# Checks if initial backup archive exists. Extracts it if yes, warns the user if not.
+function restoreInitialArchive () {
+    mInitialArchivePath="$mArchiveDir/$mInitialArchiveName"
+
+    if [[ -f $mInitialArchivePath ]]; then
+        tar -xf $mInitialArchivePath -C $mTmpDir
+    else
+        echo "Inital backup not found. May cause issues in some texts recovery."
+    fi
+}
+
+# Restore the target archive in the temporary directory. Applies patch if needed, then copy results to output directory.
+function restoreSelectedArchive () {
+    tar -xf $mArchivePath -C $mTmpDir
+
+    applyPatches
+}
+
+# Applies patches for text files.
+function applyPatches () {
+    mFiles=$( find $mTmpDir ! -name *".patch" ) # Get all files without .patch
+
+    # Set separator to "New Line"
+    SAVEIFS=$IFS
+    IFS=$(echo -en "\n\b")
+
+    for mFile in $mFiles
+    do
+        mFileType=$( file -bi $mFile )
+
+        # Check if current file is a text file
+        if [[ $mFileType == *"text"* ]]; then
+            patchFile $mFile
+        fi
+    done
+
+    # Set the IFS with its former value
+    IFS=$SAVEIFS
+}
+
+# Checks if patch exists for given file and patchs it if it is.
+function patchFile () {
+    mPatch="$1.patch"
+    if [[ -f $mPatch ]]; then
+        patch $1 -i $mPatch
+        rm $mPatch
+    fi
+}
+
+# MAIN Function
 DEBUG=1
-mmOutputDirectory="."
+mInitialArchiveName='backup_init.tar.gz'
+mOutputDir="."
+mTmpDir=".tmp"
 
 parseArgs $*
+restoreArchive
