@@ -1,13 +1,13 @@
 #! /bin/bash
 
-# Parsing arguments and storing their values in $backIgnore and $backupDirectory
+# Parsing arguments and storing their values in $mBackIgnore and $mBackupDir
 function parseArgs () {
     # Loop to retrieve arguments
     while [ $# -gt 0 ]
     do
         case $1 in
-            "-i") backIgnore=$2; shift 1;;
-            "-d") backupDirectory=$2; shift 1;;
+            "-i") mBackIgnore=$2; shift 1;;
+            "-d") mBackupDir=$2; shift 1;;
         esac
         shift 1
     done
@@ -15,24 +15,24 @@ function parseArgs () {
     # Debug check of fields values
     if [ $DEBUG -eq 1 ]
     then
-        echo "backIgnore = $backIgnore"
-        echo "backupDirectory = $backupDirectory"
+        echo "mBackIgnore = $mBackIgnore"
+        echo "mBackupDir = $mBackupDir"
     fi
 
     # Check if arguments are not missing
-    if [ -z $backIgnore ]
+    if [ -z $mBackIgnore ]
     then
-        echo "Please enter a backignore file."
+        echo "Please enter a mBackIgnore file."
         exit 0
-    elif [ -z $backupDirectory ]
+    elif [ -z $mBackupDir ]
     then
         echo "Please enter a directory to backup."
         exit 0
-    elif [ ! -f $backIgnore ]
+    elif [ ! -f $mBackIgnore ]
     then
-        echo "Please enter a valid backignore file."
+        echo "Please enter a valid mBackIgnore file."
         exit 0
-    elif [ ! -d $backupDirectory ]
+    elif [ ! -d $mBackupDir ]
     then
         echo "Backup directory must be a directory."
         exit 0
@@ -41,7 +41,7 @@ function parseArgs () {
 
 # Create the filter for files to ignore
 function createIgnoreFilter() {
-    for pattern in $( cat $backIgnore )
+    for pattern in $( cat $mBackIgnore )
     do
         filter="$filter ! -name $pattern"
     done
@@ -50,7 +50,7 @@ function createIgnoreFilter() {
 # Explore from the main directory
 function explorer() {
     echo $filter
-    local mExplorer=$( find $backupDirectory $filter -type f )
+    local mExplorer=$( find $mBackupDir $filter -type f )
 
     # Set separator to "New Line"
     SAVEIFS=$IFS
