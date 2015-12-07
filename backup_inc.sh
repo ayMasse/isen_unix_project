@@ -1,15 +1,14 @@
 #! /bin/bash
 
-#parsing arguments and storing their values in $outputDirectory and &patchArchive
+# Parsing arguments and storing their values in $mBackIgnore and $mBackupDir
 function parseArgs () {
-
     # Loop to retrieve arguments
     while [ $# -gt 0 ]
     do
         case $1 in
-            -o) outputDirectory=$2; shift 1;;
-            -a) patchArchive=$2; shift 1;;
-	    -i) backIgnore=$2; shift 1;;
+            "-i") mBackIgnore=$2; shift 1;;
+            "-d") mBackupDir=$2; shift 1;;
+            "-a") mReferenceArchivePath=$2; shift 1;;
         esac
         shift 1
     done
@@ -17,148 +16,174 @@ function parseArgs () {
     # Debug check of fields values
     if [ $DEBUG -eq 1 ]
     then
-        echo "patchArchive = $patchArchive"
-        echo "directory = $outputDirectory"
+        echo "mBackIgnore = $mBackIgnore"
+        echo "mBackupDir = $mBackupDir"
     fi
 
-local isArchiveValid=$( echo "$archiveName" | grep -x "backup_[0-9]*_[a-zA-Z]*.tar.gz" )
-
     # Check if arguments are not missing
-    if [ -z $patchArchive ]
+    if [ -z $mBackIgnore ]
     then
-        echo "Please enter a reference patch file."
+        echo "Please enter a mBackIgnore file."
         exit 0
-    elif [ -z $outputDirectory ]
+    elif [ -z $mBackupDir ]
     then
-        echo "Please enter a directory to backup (or leave the field empty - using current directory as the output)."
+        echo "Please enter a directory to backup."
         exit 0
-    elif [ -z $backIgnore ]
+    elif [ ! -f $mBackIgnore ]
     then
-    	echo "Please enter a backignore file."
-    	exit 0
-    elif [ ! -f $backIgnore ]
-    then
-    	echo "Backignore must be a file"
-    	exit 0
-    elif [ ! -f $isArchiveValid ]
-    then
-        echo "Please enter a valid patchArchive file."
+        echo "Please enter a valid mBackIgnore file."
         exit 0
-    elif [ ! -d $outputDirectory ]
+    elif [ ! -d $mBackupDir ]
     then
         echo "Backup directory must be a directory."
         exit 0
     fi
 }
 
-function deleteAllButBackupDir() {
-	find $outputDirectory -maxdepth 1 -type f -delete
+# Create the filter for files to ignore
+function createIgnoreFilter() {
+    for pattern in $( cat $mBackIgnore )
+    do
+        filter="$filter ! -name $pattern"
+    done
 }
 
-function checkTempDir () {
-    if [ ! -e $* ]
+# Explore from the main directory
+function explorer() {
+    if [[ $DEBUG -eq 1 ]]; then
+        echo $filter
+    fi
+
+    mExplorer=$( find $mBackupDir -mindepth 1 -maxdepth 1 $filter -type f )
+
+    # Get times used later
+    oldTime=$(echo $mReferenceArchivePath | cut -d _ -f 2)
+    newTime=$(date +%s)
+
+    # Set separator to "New Line"
+    SAVEIFS=$IFS
+    IFS=$(echo -en "\n\b")
+
+    # Begin treatment for each file
+    for mFile in $mExplorer
+    do
+        if [ $DEBUG -eq 1 ]
+        then
+            echo "Initialize backup for $mFile"
+        fi
+
+        backupFile $mFile
+    done
+
+    # Set the IFS with its former value
+    IFS=$SAVEIFS
+}
+
+# Set all variables in order to archive the file properly
+function backupFile () {
+    mDir=$( dirname $1)
+    mSimpleDirName=$( basename $mDir )
+    mBackupPath="$mDir/.backup"
+    mArchivePath="$mBackupPath/$mArchiveName"
+    mSimpleFileName=$( basename $1 )
+    mLastModifiedDate=$( date +%s -r $1 )
+
+    if [ ! -L "$1" ] && [ -O "$1" ] && [ $mSimpleDirName != ".backup" ] && [ $( expr $mLastModifiedDate - $oldTime ) -gt 0 ]
     then
-        mkdir "$*"
+        checkBackupDir $mBackupPath
+        checkArchive
+        checkFileType $1
+    fi
+}
+
+# Check type of file and call apropriate function to archive it.
+function checkFileType () {
+    mFileType=$( file -bi $1)
+
+    if [[ $mFileType == *"text"* ]]
+    then
+        backupText $1
+    else
+        backupBinary $1
+    fi
+}
+
+# Backup a binary file
+function backupBinary () {
+    tar -uf $mArchivePath -C $mDir $mSimpleFileName
+}
+
+# Backup a text file
+function backupText () {
+    # Extract the file from the archive
+    if [ -f "$mBackupPath/$mInitialArchiveName" ] && [[ $( tar -f "$mBackupPath/$mInitialArchiveName" -x $mSimpleFileName ) != 0 ]]
+    then
+        mPatch="$mSimpleFileName.patch"
+        tar -f "$mBackupPath/$mInitialArchiveName" -x $mSimpleFileName
+
+        if [[ $( tar -f $mReferenceArchivePath -x $mPatch ) != 0 ]]; then
+            patch $mSimpleFileName -i $mPatch
+            rm $mPatch
+        fi
+
+        diff $mSimpleFileName $1 > $mPatch
+        tar -uf $mArchivePath $mPatch
+        rm $mSimpleFileName
+        rm $mPatch
+    else
+        tar -uf "$mBackupPath/$mInitialArchiveName" -C $mDir $mSimpleFileName
+
+        if [[ $mInitialArchiveName != $mArchiveName ]]
+        then
+            touch "$mSimpleFileName.patch"
+            tar -uf $mArchivePath "$mSimpleFileName.patch"
+            rm "$mSimpleFileName.patch"
+        fi
+    fi
+}
+
+
+# Check if the .backup directory exists. If not create it.
+function checkBackupDir () {
+    if [ ! -e $1 ]
+    then
+        mkdir $1
 
         if [ $DEBUG -eq 1 ]
         then
-            echo "Created directory $*"
+            echo "Created directory $1"
         fi
 
-    elif [ ! -d $* ]
+    elif [ ! -d $1 ]
     then
-        echo "A file named $* is preventing this program to create a needed directory with this name. Abort."
+        echo "A file named .backup is preventing this program to create a needed directory with this name. Abort."
         exit 0
     fi
 }
 
-function createIgnoreFilter() {
-    for pattern in $( cat $backIgnore )
-    do
-    	echo $pattern
-        filter="$filter ! -name $pattern ! -name $pattern.patch"
-        echo $filter
-    done
+# Check if initial archive exists. If yes, create a new archive.
+function checkArchive () {
+    mTime=$( date +%s )
+    mHostname=$( hostname )
+
+    if [ -f $mArchivePath ]
+    then
+        mLastTimeModified=$( date +%s -r $mArchivePath)
+
+        if [ ! $mTime == $mLastTimeModified ]
+        then
+            mArchiveName="inc_backup_${newTime}_${oldTime}.tar.gz"
+            mArchivePath="$mBackupPath/$mArchiveName"
+        fi
+    fi
 }
 
-function handleArchiveExtracting() {
-		local backupDirectory="$outputDirectory/.backup"
+# MAIN Function
 
-		checkTempDir "$backupDirectory/tmp"
-		checkTempDir "$backupDirectory/tmp2"
-
-		chooseLatestArchive $backupDirectory
-
-		tar -xf "$patchArchive" -C "$backupDirectory/tmp2"
-
-		createIgnoreFilter
-
-		echo "filter: $filter"
-
-		local patchFiles=$( find "$backupDirectory/tmp2" -type f -name "*.patch" $filter)
-		local binaryFiles=$( find "$backupDirectory/tmp2" -type f ! -name "*.patch" $filter)
-
-		for patch in $patchFiles
-		do
-			local cleanedName=$( basename $patch .patch )
-		        if [ $DEBUG -eq 1 ]
-		        then
-				echo "cleanedName = $cleanedName"
-				echo "patch file = $patch"
-			fi
-			patch "$backupDirectory/tmp/${cleanedName}" "$patch"
-		done
-
-		for binary in $binaryFiles
-		do
-			local cleanedName=$( basename $binary )
-		        if [ $DEBUG -eq 1 ]
-		        then
-				echo "cleanedName = $cleanedName"
-				echo "binary file = $binary"
-			fi
-			mv -f "$binary" "$backupDirectory/tmp/${cleanedName}"
-		done
-
-		## TODO : save the archive
-		local oldTime=$(echo "$patchArchive" | cut -d _ -f 2)
-		local newTime=$(date +%s)
-
-		filesToBackup=$( ls "$backupDirectory/tmp/" )
-
-		SAVEIFS=$IFS
-		IFS=$(echo -en "\n\b")
-
-		for file in $filesToBackup
-		do
-			tar -uf "$backupDirectory/inc_backup_${newTime}_${oldTime}.tgz" -C "$backupDirectory/tmp/" "$file"
-		done
-
-		# Set the IFS with its former value
-		IFS=$SAVEIFS
-
-		rm -rf $backupDirectory/tmp
-		rm -rf $backupDirectory/tmp2
-		exit 0
-}
-
-function chooseLatestArchive() {
-	local notInitialBackups=$( ls -Xr | grep -x "inc_backup_[0-9]*_[a-zA-Z]*.tar.gz" )
-	if [ ! -z $notInitialBackups ]			## THERE IS A MORE RECENT ONE (<=> INCREMENTAL BACKUP) AVAILABLE
-	then
-		local arr=($notInitialBackups)
-		local baseArchive=${arr[0]}
-		tar -xf "${*}/${baseArchive}" -C "$backupDirectory/tmp" ### RESTORE NOT BACKUP_INIT
-	elif [ -f "${*}"/backup_init.tar.gz ]
-	then
-		tar -xf "${*}/backup_init.tar.gz" -C "$backupDirectory/tmp" ### RESTORE BACKUP_INIT
-	else
-		echo "Trying to extract a patch archive without any existing base archive. Aborting."
-		exit 0
-	fi
-}
-
-################# MAIN
 DEBUG=1
+mInitialArchiveName='backup_init.tar.gz'
+mArchiveName=$mInitialArchiveName
+
 parseArgs $*
-handleArchiveExtracting
+createIgnoreFilter
+explorer
