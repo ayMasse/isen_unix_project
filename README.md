@@ -60,9 +60,7 @@ It is matched **ONLY** against the file name, **NOT** against the path of the fi
 * If it's the first time you launch the script, it wil create inside **.backup** a file named backup_init.tar.gz which is the *full* backup of the folder
 
 * Each following use of the backup.sh will create a *patch archive* which will use backup_init.tar.gz as a reference. 
-*patch archives* contain full binaries, but patch files for the text files (see man diff).
-
-The *full backup* is either *backup_init.tar.gz* or *backup_inc_oldtime_newtime.tar.gz* (see script backup_inc.sh)
+*Patch archives* contain all binaries, but patch files for the text files (see man diff).
 
 * The *patch archives* are named like this: backup_*time_since_epoch*_*hostname*.tar.gz
 
@@ -85,12 +83,13 @@ The archive (either *patch* or *full*) to backup inside OUTPUT_DIR
 #### Result
 
 * This script first delete **ALL** files inside the OUTPUT_DIR
-* It then restore the backup
+* It then restores the backup
 * If it's a *patch archive*, it restores backup_init.tar.gz then patch the result thanks to ARCHIVE
 
 #### Usage example
 
 ./restore_backup.sh -o folder/ -a folder/.backup/backup_init.tar.gz
+
 ./restore_backup.sh -o folder/ -a folder/.backup/backup_1111111_hostname.tar.gz
 
 ### backup_inc.sh
