@@ -116,4 +116,4 @@ The behavior is the same as backup.sh otherwise.
 
 #### Usage example
 
-./backup_inc -d folder/.backup -a folder/.backup/backup_1111_hostname.tar.gz -i inc_backignore 
+./backup_inc -d folder/ -a folder/.backup/backup_1111_hostname.tar.gz -i inc_backignore 
