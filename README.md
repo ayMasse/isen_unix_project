@@ -66,7 +66,7 @@ The *full backup* is either *backup_init.tar.gz* or *backup_inc_oldtime_newtime.
 
 * The *patch archives* are named like this: backup_*time_since_epoch*_*hostname*.tar.gz
 
-##### Usage example
+#### Usage example
 
 ./backup.sh -d folder/ -i backignore
 
